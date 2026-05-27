@@ -1,0 +1,56 @@
+name: Beteiligungsportal-Mailpush
+
+on:
+  schedule:
+    # Einmal pro Werktag morgens (06:30 UTC = 08:30 Berlin im Sommer,
+    # 07:30 im Winter). Mehrmals pro Tag macht selten Sinn, weil das
+    # Portal nicht stuendlich aktualisiert wird.
+    - cron: "30 6 * * 1-5"
+  workflow_dispatch:  # manuelles Ausloesen ueber die GitHub-UI
+
+permissions:
+  contents: write   # damit state/seen.json zurueck committed werden kann
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Abhaengigkeiten installieren
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Scraper ausfuehren und ggf. Mail verschicken
+        env:
+          # SMTP-Zugangsdaten aus den Repo-Secrets:
+          SMTP_HOST:      ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:      ${{ secrets.SMTP_PORT }}
+          SMTP_USER:      ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD:  ${{ secrets.SMTP_PASSWORD }}
+          SMTP_USE_TLS:   ${{ secrets.SMTP_USE_TLS }}
+          SMTP_USE_SSL:   ${{ secrets.SMTP_USE_SSL }}
+          SMTP_FROM:      ${{ secrets.SMTP_FROM }}
+          MAIL_TO:        ${{ secrets.MAIL_TO }}
+          MAIL_REPLY_TO:  ${{ secrets.MAIL_REPLY_TO }}
+        run: python scraper.py
+
+      - name: State zurueck ins Repo committen
+        run: |
+          git config user.name  "feedbot"
+          git config user.email "feedbot@users.noreply.github.com"
+          git add state/seen.json
+          if git diff --cached --quiet; then
+            echo "Keine Aenderungen am State."
+          else
+            git commit -m "State aktualisiert ($(date -u +%Y-%m-%d))"
+            git push
+          fi

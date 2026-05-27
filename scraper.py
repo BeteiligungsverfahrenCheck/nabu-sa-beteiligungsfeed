@@ -170,21 +170,38 @@ def scrape_portal(url: str, debug: bool = False) -> list[FeedItem]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
+            # Echter Chrome-User-Agent. Manche Behoerdenportale filtern
+            # alles, was nach Bot aussieht.
             user_agent=(
-                "Mozilla/5.0 (compatible; NABU-SA-Feedbot/1.0; "
-                "+mailto:mail@nabu.lsa.de)"
-            )
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            locale="de-DE",
+            timezone_id="Europe/Berlin",
+            extra_http_headers={
+                "Accept-Language": "de-DE,de;q=0.9,en;q=0.6",
+            },
         )
         page = context.new_page()
-        # "networkidle" funktioniert beim Beteiligungsportal nicht, weil
-        # im Hintergrund dauerhaft Requests laufen. Stattdessen warten wir
-        # auf das DOM und dann gezielt auf die Verfahrenseintraege.
-        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        # "commit" wartet nur, bis der Server irgendetwas zurueckschickt.
+        # Wir sind dann fuer die DOM-/Renderwartung selbst zustaendig.
+        try:
+            page.goto(url, wait_until="commit", timeout=45_000)
+        except Exception as exc:
+            print(f"[fehler] goto: {exc}", file=sys.stderr)
+            browser.close()
+            return items
+        # Jetzt aufs DOM warten...
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        except Exception:
+            pass
+        # ...und dann gezielt auf einen Verfahrenseintrag.
         try:
             page.wait_for_selector(PARSE_CONFIG["item_selector"], timeout=20_000)
         except Exception:
-            # Selektor passt evtl. nicht - JS-Render trotzdem abwarten,
-            # dann gibt's im weiteren Verlauf eine bessere Fehlermeldung.
+            # Falls Selektor nicht passt: trotzdem etwas Zeit fuer JS-Rendering
             page.wait_for_timeout(3000)
 
         for sel in [

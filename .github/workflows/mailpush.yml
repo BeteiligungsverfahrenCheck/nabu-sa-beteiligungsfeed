@@ -35,6 +35,23 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
+      - name: Netzwerk-Diagnose (Portal erreichbar?)
+        continue-on-error: true
+        run: |
+          set -e
+          echo "--- DNS-Aufloesung ---"
+          getent hosts beteiligung.sachsen-anhalt.de || echo "DNS-Lookup fehlgeschlagen"
+          echo ""
+          echo "--- HTTP-HEAD-Request (10s Timeout) ---"
+          curl -sS -I --max-time 10 \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+            https://beteiligung.sachsen-anhalt.de/portal/hauptportal/beteiligung/themen \
+            || echo "(curl-Exitcode oben beachten)"
+          echo ""
+          echo "--- Eigene IP ---"
+          curl -sS --max-time 10 https://api.ipify.org || true
+          echo ""
+
       - name: Scraper ausfuehren und ggf. Mail verschicken
         env:
           SMTP_HOST:      ${{ secrets.SMTP_HOST }}

@@ -176,7 +176,16 @@ def scrape_portal(url: str, debug: bool = False) -> list[FeedItem]:
             )
         )
         page = context.new_page()
-        page.goto(url, wait_until="networkidle", timeout=60_000)
+        # "networkidle" funktioniert beim Beteiligungsportal nicht, weil
+        # im Hintergrund dauerhaft Requests laufen. Stattdessen warten wir
+        # auf das DOM und dann gezielt auf die Verfahrenseintraege.
+        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        try:
+            page.wait_for_selector(PARSE_CONFIG["item_selector"], timeout=20_000)
+        except Exception:
+            # Selektor passt evtl. nicht - JS-Render trotzdem abwarten,
+            # dann gibt's im weiteren Verlauf eine bessere Fehlermeldung.
+            page.wait_for_timeout(3000)
 
         for sel in [
             "button:has-text('Akzeptieren')",

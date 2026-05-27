@@ -11,17 +11,23 @@ on:
 permissions:
   contents: write   # damit state/seen.json zurueck committed werden kann
 
+# Sicherheitsnetz: falls eine der unten verwendeten Actions doch noch
+# auf Node 20 fallen sollte, erzwingt diese Env-Variable den Lauf auf
+# Node 24. Damit ist der Workflow gegen die Node-Deprecation immun.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   push:
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Python einrichten
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Abhaengigkeiten installieren
         run: |
@@ -31,7 +37,6 @@ jobs:
 
       - name: Scraper ausfuehren und ggf. Mail verschicken
         env:
-          # SMTP-Zugangsdaten aus den Repo-Secrets:
           SMTP_HOST:      ${{ secrets.SMTP_HOST }}
           SMTP_PORT:      ${{ secrets.SMTP_PORT }}
           SMTP_USER:      ${{ secrets.SMTP_USER }}
@@ -41,7 +46,16 @@ jobs:
           SMTP_FROM:      ${{ secrets.SMTP_FROM }}
           MAIL_TO:        ${{ secrets.MAIL_TO }}
           MAIL_REPLY_TO:  ${{ secrets.MAIL_REPLY_TO }}
-        run: python scraper.py
+        run: python scraper.py --debug
+
+      - name: Debug-HTML als Artefakt sichern (nur bei Bedarf)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: debug-dump
+          path: debug_dump.html
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: State zurueck ins Repo committen
         run: |
